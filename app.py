@@ -197,8 +197,8 @@ def make_pdf_bytes(result: dict):
 st.title("🔩 Vision Qualité Mobile")
 st.write("Prenez une photo ou chargez un lot de pièces pour exécuter le calcul instantané.")
 
-# Ajustement manuel de la sensibilité
-sensibility = st.radio(
+# Ajustement manuel de la sensibilité (Variable corrigée : sensitivity)
+sensitivity = st.radio(
     "Configuration du lot :",
     ["low", "medium", "high"],
     index=1,
@@ -219,7 +219,7 @@ if img_file is not None:
     file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
     img_cv = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-    # Analyse
+    # Analyse avec le paramètre de sensibilité corrigé
     count, annotated_cv = detect_and_count(img_cv, sensitivity)
 
     # Conversion d'affichage pour Streamlit
