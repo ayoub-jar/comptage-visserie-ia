@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Application Web de comptage d'éléments (écrous, rondelles, visserie)
-Spécialement optimisée pour Tablettes et Smartphones (iOS / Android)
-Moteur : OpenCV Watershed Haute Robustesse + Streamlit
+Application Web de comptage de visserie / écrous
+Optimisée pour Tablettes, Smartphones et Streamlit Cloud
+Moteur : OpenCV Watershed
 """
 
 import streamlit as st
@@ -22,7 +22,7 @@ import io
 import os
 import tempfile
 
-# Configuration de la page Streamlit (Responsive Design)
+# Configuration responsive de la page
 st.set_page_config(
     page_title="Contrôle Qualité - Vision Industrielle",
     page_icon="🔩",
@@ -30,12 +30,13 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-#  ALGORITHME DE COMPTAGE INDUSTRIEL (WATERSHED)
+#  ALGORITHME WATERSHED INDUSTRIEL ROBUSTE
 # ─────────────────────────────────────────────
 
 def detect_and_count(image_cv, sensitivity: str = "medium"):
     """
-    Algorithme robuste de séparation des pièces métalliques avec élimination des reflets.
+    Algorithme de segmentation Watershed pour séparer et compter 
+    les pièces même si elles se touchent ou sont vues de profil.
     """
     sensitivity_params = {
         "low":    dict(dist_thresh=0.55, min_area=800,  blur_size=5),
@@ -44,30 +45,31 @@ def detect_and_count(image_cv, sensitivity: str = "medium"):
     }
     p = sensitivity_params[sensitivity]
 
+    # Conversion en nuances de gris
     gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
 
-    # Nettoyage des reflets internes (filetages brillants) via fermeture morphologique
+    # Filtrage des reflets métalliques brillants (Fermeture morphologique)
     kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
     gray_cleaned = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel_clean)
 
-    # Seuillage binaire sur fond blanc
+    # Seuillage adaptatif sur fond blanc
     blurred = cv2.medianBlur(gray_cleaned, p["blur_size"])
     _, thresh = cv2.threshold(blurred, 242, 255, cv2.THRESH_BINARY_INV)
 
-    # Élimination des impuretés de fond
+    # Nettoyage du bruit de fond
     kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     thresh_cleaned = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_open, iterations=2)
 
-    # Détermination du fond et de l'avant-plan (centres) via transformée de distance
+    # Séparation des objets collés via transformée de distance
     sure_bg = cv2.dilate(thresh_cleaned, kernel_open, iterations=3)
     dist_transform = cv2.distanceTransform(thresh_cleaned, cv2.DIST_L2, 5)
     _, sure_fg = cv2.threshold(dist_transform, p["dist_thresh"] * dist_transform.max(), 255, 0)
     sure_fg = np.uint8(sure_fg)
 
-    # Zones inconnues (frontières de contact)
+    # Zone de contact inconnue
     unknown = cv2.subtract(sure_bg, sure_fg)
 
-    # Étiquetage
+    # Marquage des composants
     _, markers = cv2.connectedComponents(sure_fg)
     markers = markers + 1
     markers[unknown == 255] = 0
@@ -92,11 +94,12 @@ def detect_and_count(image_cv, sensitivity: str = "medium"):
             if area > p["min_area"]:
                 count += 1
                 x, y, w, h = cv2.boundingRect(c)
+                # Dessin du rectangle de détection (Vert flashy)
                 cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 210, 50), 2)
                 cv2.putText(annotated, f"#{count}", (x + 3, y + 16),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 210, 50), 2)
 
-    # Intégration du bandeau de score
+    # En-tête visuel avec le score total
     cv2.rectangle(annotated, (5, 5), (220, 50), (0, 0, 0), -1)
     cv2.putText(annotated, f"Total: {count}", (12, 38),
                 cv2.FONT_HERSHEY_DUPLEX, 1.1, (0, 255, 150), 2)
@@ -105,11 +108,10 @@ def detect_and_count(image_cv, sensitivity: str = "medium"):
 
 
 # ─────────────────────────────────────────────
-#  CONVERTISSEUR POUR LE PDF REPORTLAB
+#  GÉNÉRATEUR DE RAPPORT PDF EN MÉMOIRE
 # ─────────────────────────────────────────────
 
 def make_pdf_bytes(result: dict):
-    """ Génère le rapport PDF directement en mémoire sous forme de flux d'octets """
     pdf_buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         pdf_buffer, pagesize=A4,
@@ -122,7 +124,7 @@ def make_pdf_bytes(result: dict):
     sub_style = ParagraphStyle("s", parent=styles["Normal"], fontSize=10, textColor=colors.grey, alignment=TA_CENTER)
 
     story.append(Paragraph("🔩 RAPPORT DE CONTRÔLE QUALITÉ MOBILE", header_style))
-    story.append(Paragraph("Généré depuis Tablette/Smartphone via Watershed Engine", sub_style))
+    story.append(Paragraph("Généré automatiquement par Vision Industrielle Cloud", sub_style))
     story.append(Spacer(1, 0.4*cm))
     story.append(Table([[""]], colWidths=[17*cm], style=TableStyle([("LINEBELOW", (0,0), (-1,-1), 2, colors.HexColor("#1a2e5a"))])))
     story.append(Spacer(1, 0.5*cm))
@@ -172,12 +174,12 @@ def make_pdf_bytes(result: dict):
     if "ann_img" in result:
         tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
         result["ann_img"].save(tmp.name, "JPEG", quality=85)
-        story.append(Paragraph("Image de contrôle (Détection)", styles["Heading2"]))
+        story.append(Paragraph("Image de contrôle (Vision Numérique)", styles["Heading2"]))
         story.append(Spacer(1, 0.2*cm))
         story.append(RLImage(tmp.name, width=15*cm, height=9*cm, kind="proportional"))
         story.append(Spacer(1, 0.5*cm))
 
-    story.append(Paragraph(f"Rapport de contrôle qualité v5.0 Mobile", sub_style))
+    story.append(Paragraph(f"Rapport de contrôle qualité Cloud v5.0", sub_style))
     doc.build(story)
     
     pdf_bytes = pdf_buffer.getvalue()
@@ -189,54 +191,53 @@ def make_pdf_bytes(result: dict):
 
 
 # ─────────────────────────────────────────────
-#  INTERFACE DE L'APPLICATION WEB MOBILE
+#  INTERFACE WEB COMPATIBLE SMARTPHONE/TABLETTE
 # ─────────────────────────────────────────────
 
 st.title("🔩 Vision Qualité Mobile")
-st.write("Moteur d'analyse haute résolution pour tablettes et smartphones.")
+st.write("Prenez une photo ou chargez un lot de pièces pour exécuter le calcul instantané.")
 
-# Panneau des paramètres de sensibilité
+# Ajustement manuel de la sensibilité
 sensibility = st.radio(
-    "Sensibilité de coupure (Watershed) :",
+    "Configuration du lot :",
     ["low", "medium", "high"],
     index=1,
-    format_func=lambda x: "Faible (Pièces espacées)" if x=="low" else "Moyenne (Standard)" if x=="medium" else "Élevée (Pièces imbriquées/collées)"
+    format_func=lambda x: "Pièces très espacées" if x=="low" else "Lot Standard / Normal" if x=="medium" else "Pièces collées ou imbriquées"
 )
 
-# MODE DE CAPTURE PHOTO MOBILE
-source_mode = st.selectbox("Sélectionner la caméra ou la galerie :", ["📷 Prendre une Photo", "📂 Charger depuis la Galerie"])
+# Gestion de la caméra sur Mobile
+source_mode = st.selectbox("Méthode de capture :", ["📷 Prendre une Photo", "📂 Charger depuis la Galerie"])
 
 img_file = None
 if source_mode == "📷 Prendre une Photo":
-    # Active nativement l'appareil photo/caméra arrière de la tablette ou du téléphone
-    img_file = st.camera_input("Déclencher la prise de vue")
+    img_file = st.camera_input("Ouvrir l'appareil photo")
 else:
     img_file = st.file_uploader("Sélectionner une image", type=["jpg", "jpeg", "png", "webp"])
 
 if img_file is not None:
-    # Lecture de l'image capturée
+    # Lecture OpenCV de l'image reçue du smartphone
     file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
     img_cv = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-    # Exécution de l'algorithme Watershed robuste
+    # Analyse
     count, annotated_cv = detect_and_count(img_cv, sensitivity)
 
-    # Affichage du résultat à l'écran du smartphone
+    # Conversion d'affichage pour Streamlit
     ann_rgb = cv2.cvtColor(annotated_cv, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(ann_rgb)
     
     st.success(f"### 🎉 Analyse terminée : {count} éléments détectés")
-    st.image(pil_img, caption="Retour visuel de l'analyse", use_container_width=True)
+    st.image(pil_img, caption="Résultat visuel de la détection", use_container_width=True)
 
-    # Formulaire d'information du Lot
+    # Formulaire de traçabilité
     st.markdown("---")
-    st.subheader("📋 Informations de traçabilité")
+    st.subheader("📋 Informations de traçabilité (Rapport)")
     op = st.text_input("Nom de l'opérateur")
-    lot = st.text_input("Référence du lot contrôlé")
+    lot = st.text_input("Référence du lot")
     ptype = st.text_input("Désignation de la pièce")
     expected = st.text_input("Quantité théorique attendue")
 
-    # Bouton de génération et de téléchargement du PDF pour le mobile
+    # Données compilées pour le PDF
     result_data = {
         "count": count, "operator": op, "lot_ref": lot,
         "piece_type": ptype, "expected": expected, "ann_img": pil_img
@@ -244,6 +245,7 @@ if img_file is not None:
     
     pdf_data = make_pdf_bytes(result_data)
     
+    # Téléchargement direct sur la tablette
     st.download_button(
         label="📄 Télécharger le Rapport PDF de Contrôle",
         data=pdf_data,
