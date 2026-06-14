@@ -21,7 +21,10 @@ import datetime
 import io
 import os
 import tempfile
-from ultralytics import FastSAM
+try:
+    from ultralytics import FastSAM
+except ImportError:
+    from ultralytics.fastsam import FastSAM
 
 st.set_page_config(
     page_title="Contrôle Qualité - Vision Industrielle",
