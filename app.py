@@ -609,12 +609,33 @@ if img_file is not None:
     st.success(f"### 🎉 Analyse terminée : {count} éléments détectés")
     st.image(pil_img, caption="Résultat visuel de la détection", use_container_width=True)
 
-    st.markdown("---")
-    st.subheader("📋 Informations de traçabilité (Rapport)")
-    op = st.text_input("Nom de l'opérateur")
+   # Contrôleur (liste déroulante)
+    op = st.selectbox(
+        "Contrôleur",
+        [
+            "Mur qualité",
+            "Magasinier"
+        ]
+    )
+
+    # Référence du lot
     lot = st.text_input("Référence du lot")
-    ptype = st.text_input("Désignation de la pièce")
-    expected = st.text_input("Quantité théorique attendue")
+
+    # Désignation de la pièce (liste déroulante)
+    ptype = st.selectbox(
+        "Désignation de la pièce",
+        [
+            "NSA5057C5"
+        ]
+    )
+
+    # Quantité théorique attendue (liste déroulante)
+    expected = st.selectbox(
+        "Quantité théorique attendue",
+        [
+            "18"
+        ]
+    )
 
     result_data = {
         "count": count,
